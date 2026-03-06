@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>مرجع البنود</title>
   <meta name="theme-color" content="#0f62fe" />
-  <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="manifest" href="manifest.webmanifest?v=4" />
+  <link rel="stylesheet" href="styles.css?v=4" />
 </head>
 <body>
   <header class="appbar">
@@ -94,7 +94,7 @@
           <h2 id="modalTitle">إضافة صنف</h2>
           <p>أدخل الاسم والبند والفئة والسعر</p>
         </div>
-        <button id="closeModal" class="iconClose">✕</button>
+        <button id="closeModal" class="iconClose" type="button">✕</button>
       </div>
 
       <div class="formGrid">
@@ -127,13 +127,13 @@
       <div id="msg" class="msg" hidden></div>
 
       <div class="modalActions">
-        <button id="saveItem" class="btn primary grow">حفظ</button>
-        <button id="deleteItem" class="btn dangerSoft" hidden>حذف</button>
+        <button id="saveItem" class="btn primary grow" type="button">حفظ</button>
+        <button id="deleteItem" class="btn dangerSoft" type="button" hidden>حذف</button>
       </div>
     </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.20.3/dist/xlsx.full.min.js"></script>
-  <script src="app.js"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>
