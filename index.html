@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>مرجع البنود - بسام</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css" />
+  <meta name="theme-color" content="#0b5fff" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="title">
+      <div class="logo">ب</div>
+      <div>
+        <div class="h1">مرجع البنود</div>
+        <div class="sub">بحث • إضافة • تعديل • حذف • استيراد Excel</div>
+      </div>
+    </div>
+    <button id="installBtn" class="btn ghost" hidden>تثبيت</button>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <div class="row">
+        <input id="q" class="input" placeholder="ابحث بالاسم أو رقم البند..." autocomplete="off" />
+        <select id="filterRate" class="input select">
+          <option value="">كل الفئات</option>
+          <option value="5%">5%</option>
+          <option value="10%">10%</option>
+          <option value="25%">25%</option>
+        </select>
+      </div>
+
+      <div class="row actions">
+        <button id="addNew" class="btn">+ إضافة صنف</button>
+
+        <label class="btn ghost file">
+          استيراد Excel
+          <input id="xlsxFile" type="file" accept=".xlsx,.xls" hidden />
+        </label>
+
+        <button id="exportJson" class="btn ghost">تصدير نسخة JSON</button>
+
+        <label class="btn ghost file">
+          استيراد JSON
+          <input id="jsonFile" type="file" accept=".json" hidden />
+        </label>
+
+        <button id="clearAll" class="btn danger ghost">مسح الكل</button>
+      </div>
+
+      <div class="hint">
+        ✅ الاستيراد من Excel يدعم الأعمدة: <b>الصنف</b>، <b>البند</b>، <b>الفئة</b>، <b>السعر (USD)</b> (أو سعر).
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="meta">
+        <div>عدد النتائج: <b id="count">0</b></div>
+        <div class="muted">يتم الحفظ تلقائيًا على الجهاز</div>
+      </div>
+
+      <div class="tableWrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>الصنف</th>
+              <th>البند</th>
+              <th>الفئة</th>
+              <th>السعر (USD)</th>
+              <th>إجراءات</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal -->
+  <div id="modal" class="modal" hidden>
+    <div class="modalCard">
+      <div class="modalHead">
+        <div class="h2" id="modalTitle">إضافة صنف</div>
+        <button id="closeModal" class="btn ghost">✕</button>
+      </div>
+
+      <div class="grid">
+        <div>
+          <label class="lbl">اسم الصنف</label>
+          <input id="fName" class="input" placeholder="مثال: شاشات تلفزيون" />
+        </div>
+
+        <div>
+          <label class="lbl">رقم البند</label>
+          <input id="fCode" class="input" inputmode="numeric" placeholder="مثال: 85287200" />
+        </div>
+
+        <div>
+          <label class="lbl">الفئة</label>
+          <select id="fRate" class="input select">
+            <option value="">اختر</option>
+            <option value="5%">5%</option>
+            <option value="10%">10%</option>
+            <option value="25%">25%</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="lbl">السعر (USD)</label>
+          <input id="fPrice" class="input" inputmode="decimal" placeholder="مثال: 120" />
+        </div>
+      </div>
+
+      <div class="row actions">
+        <button id="saveItem" class="btn">حفظ</button>
+        <button id="deleteItem" class="btn danger ghost" hidden>حذف</button>
+      </div>
+
+      <div id="msg" class="msg" hidden></div>
+    </div>
+  </div>
+
+  <!-- SheetJS for XLSX import (light CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.20.3/dist/xlsx.full.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
