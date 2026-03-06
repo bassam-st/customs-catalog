@@ -1,56 +1,35 @@
-/* Service Worker for customs-catalog
-   Version: v3
-*/
-
-const CACHE_NAME = "customs-catalog-v3";
+const CACHE_NAME = "customs-catalog-v4";
 
 const FILES_TO_CACHE = [
   "./",
-  "./index.html",
-  "./styles.css",
-  "./app.js",
-  "./manifest.webmanifest"
+  "./index.html?v=4",
+  "./styles.css?v=4",
+  "./app.js?v=4",
+  "./manifest.webmanifest?v=4"
 ];
 
-// install
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(FILES_TO_CACHE);
-    })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(FILES_TO_CACHE))
   );
   self.skipWaiting();
 });
 
-// activate
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
+    caches.keys().then((keys) =>
+      Promise.all(
         keys.map((key) => {
-          if (key !== CACHE_NAME) {
-            return caches.delete(key);
-          }
+          if (key !== CACHE_NAME) return caches.delete(key);
         })
-      );
-    })
+      )
+    )
   );
   self.clients.claim();
 });
 
-// fetch
 self.addEventListener("fetch", (event) => {
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        const responseClone = response.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseClone);
-        });
-        return response;
-      })
-      .catch(() => {
-        return caches.match(event.request);
-      })
+    fetch(event.request).catch(() => caches.match(event.request))
   );
 });
