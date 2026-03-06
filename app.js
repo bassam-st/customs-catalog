@@ -1,8 +1,3 @@
-/* مرجع البنود - بسام (GitHub Pages PWA)
-   تخزين: IndexedDB
-   ميزات: CRUD + بحث + استيراد Excel + تصدير/استيراد JSON
-*/
-
 const DB_NAME = "bnd_db";
 const DB_VER = 1;
 const STORE = "items";
@@ -10,14 +5,17 @@ const STORE = "items";
 let db;
 let allItems = [];
 let editingId = null;
+let deferredPrompt = null;
 
 const els = {
   q: document.getElementById("q"),
   filterRate: document.getElementById("filterRate"),
   tbody: document.getElementById("tbody"),
+  cards: document.getElementById("cards"),
   count: document.getElementById("count"),
 
-  addNew: document.getElementById("addNew"),
+  addNewTop: document.getElementById("addNewTop"),
+  fabAdd: document.getElementById("fabAdd"),
   clearAll: document.getElementById("clearAll"),
 
   xlsxFile: document.getElementById("xlsxFile"),
@@ -39,10 +37,7 @@ const els = {
 };
 
 function norm(s){
-  return (s ?? "")
-    .toString()
-    .trim()
-    .replace(/\s+/g, " ");
+  return (s ?? "").toString().trim().replace(/\s+/g, " ");
 }
 
 function normCode(s){
@@ -50,16 +45,26 @@ function normCode(s){
 }
 
 function parsePrice(s){
-  const t = norm(s).replace(/,/g,".");
-  if(!t) return "";
+  const t = norm(s).replace(/,/g, ".");
+  if (!t) return "";
   const n = Number(t);
-  if(Number.isFinite(n) && n >= 0) return n;
+  if (Number.isFinite(n) && n >= 0) return n;
   return "";
+}
+
+function escapeHtml(str){
+  return (str ?? "").toString()
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
 }
 
 function openDB(){
   return new Promise((resolve, reject)=>{
     const req = indexedDB.open(DB_NAME, DB_VER);
+
     req.onupgradeneeded = (e)=>{
       const db = e.target.result;
       const store = db.createObjectStore(STORE, { keyPath: "id" });
@@ -67,12 +72,13 @@ function openDB(){
       store.createIndex("code", "code", { unique: false });
       store.createIndex("rate", "rate", { unique: false });
     };
+
     req.onsuccess = ()=> resolve(req.result);
     req.onerror = ()=> reject(req.error);
   });
 }
 
-function txStore(mode="readonly"){
+function txStore(mode = "readonly"){
   return db.transaction(STORE, mode).objectStore(STORE);
 }
 
@@ -100,7 +106,7 @@ function deleteById(id){
   });
 }
 
-function clearAll(){
+function clearAllStore(){
   return new Promise((resolve, reject)=>{
     const req = txStore("readwrite").clear();
     req.onsuccess = ()=> resolve(true);
@@ -109,27 +115,56 @@ function clearAll(){
 }
 
 function render(){
-  const q = norm(els.q.value);
-  const r = norm(els.filterRate.value);
+  const q = norm(els.q.value).toLowerCase();
+  const rate = norm(els.filterRate.value);
 
-  const qLower = q.toLowerCase();
   const filtered = allItems.filter(it=>{
-    const okRate = !r || it.rate === r;
-    if(!q) return okRate;
-
-    const nameHit = (it.name || "").toLowerCase().includes(qLower);
-    const codeHit = (it.code || "").includes(q); // user may type digits
+    const okRate = !rate || it.rate === rate;
+    const nameHit = !q || (it.name || "").toLowerCase().includes(q);
+    const codeHit = !q || (it.code || "").includes(q);
     return okRate && (nameHit || codeHit);
   });
 
-  els.count.textContent = String(filtered.length);
+  els.count.textContent = filtered.length;
+
+  els.cards.innerHTML = filtered.map(it=>{
+    const price = (it.price === "" || it.price === null || it.price === undefined) ? "-" : it.price;
+    return `
+      <article class="itemCard">
+        <div class="itemTop">
+          <div>
+            <div class="itemName">${escapeHtml(it.name || "")}</div>
+            <div class="itemCode">البند: ${escapeHtml(it.code || "")}</div>
+          </div>
+          ${it.rate ? `<span class="ratePill">${escapeHtml(it.rate)}</span>` : ""}
+        </div>
+
+        <div class="itemMeta">
+          <div class="metaBox">
+            <span class="metaLabel">السعر</span>
+            <div class="metaVal">${escapeHtml(String(price))} USD</div>
+          </div>
+          <div class="metaBox">
+            <span class="metaLabel">رقم البند</span>
+            <div class="metaVal">${escapeHtml(it.code || "")}</div>
+          </div>
+        </div>
+
+        <div class="itemActions">
+          <button class="smallBtn" data-edit="${it.id}">تعديل</button>
+          <button class="smallBtn danger" data-del="${it.id}">حذف</button>
+        </div>
+      </article>
+    `;
+  }).join("");
+
   els.tbody.innerHTML = filtered.map(it=>{
     const price = (it.price === "" || it.price === null || it.price === undefined) ? "" : String(it.price);
     return `
       <tr>
         <td>${escapeHtml(it.name || "")}</td>
-        <td><code>${escapeHtml(it.code || "")}</code></td>
-        <td>${it.rate ? `<span class="pill">${escapeHtml(it.rate)}</span>` : ""}</td>
+        <td>${escapeHtml(it.code || "")}</td>
+        <td>${escapeHtml(it.rate || "")}</td>
         <td>${escapeHtml(price)}</td>
         <td>
           <button class="smallBtn" data-edit="${it.id}">تعديل</button>
@@ -139,28 +174,21 @@ function render(){
     `;
   }).join("");
 
-  // bind actions
-  els.tbody.querySelectorAll("[data-edit]").forEach(b=>{
-    b.addEventListener("click", ()=> openEdit(b.getAttribute("data-edit")));
+  document.querySelectorAll("[data-edit]").forEach(btn=>{
+    btn.addEventListener("click", ()=> openEdit(btn.dataset.edit));
   });
-  els.tbody.querySelectorAll("[data-del]").forEach(b=>{
-    b.addEventListener("click", ()=> onDelete(b.getAttribute("data-del")));
-  });
-}
 
-function escapeHtml(str){
-  return (str ?? "").toString()
-    .replaceAll("&","&amp;")
-    .replaceAll("<","&lt;")
-    .replaceAll(">","&gt;")
-    .replaceAll('"',"&quot;")
-    .replaceAll("'","&#039;");
+  document.querySelectorAll("[data-del]").forEach(btn=>{
+    btn.addEventListener("click", ()=> onDelete(btn.dataset.del));
+  });
 }
 
 function showModal(show){
   els.modal.hidden = !show;
-  els.msg.hidden = true;
-  if(show) setTimeout(()=> els.fName.focus(), 10);
+  document.body.style.overflow = show ? "hidden" : "";
+  if (show) {
+    setTimeout(()=> els.fName.focus(), 60);
+  }
 }
 
 function resetForm(){
@@ -170,6 +198,7 @@ function resetForm(){
   els.fCode.value = "";
   els.fRate.value = "";
   els.fPrice.value = "";
+  els.msg.hidden = true;
   els.deleteItem.hidden = true;
 }
 
@@ -179,32 +208,18 @@ function openAdd(){
 }
 
 function openEdit(id){
-  const it = allItems.find(x=> x.id === id);
-  if(!it) return;
+  const it = allItems.find(x => x.id === id);
+  if (!it) return;
+
   editingId = id;
   els.modalTitle.textContent = "تعديل صنف";
   els.fName.value = it.name || "";
   els.fCode.value = it.code || "";
   els.fRate.value = it.rate || "";
   els.fPrice.value = (it.price === "" || it.price === null || it.price === undefined) ? "" : String(it.price);
+  els.msg.hidden = true;
   els.deleteItem.hidden = false;
   showModal(true);
-}
-
-async function onDelete(id){
-  const it = allItems.find(x=> x.id === id);
-  if(!it) return;
-  const ok = confirm(`حذف الصنف: ${it.name} ؟`);
-  if(!ok) return;
-  await deleteById(id);
-  await reload();
-}
-
-async function onDeleteFromModal(){
-  if(!editingId) return;
-  await deleteById(editingId);
-  showModal(false);
-  await reload();
 }
 
 function toast(msg){
@@ -218,14 +233,17 @@ async function onSave(){
   const rate = norm(els.fRate.value);
   const price = parsePrice(els.fPrice.value);
 
-  if(!name) return toast("اكتب اسم الصنف.");
-  if(!code) return toast("اكتب رقم البند (أرقام فقط).");
-  if(rate && !["5%","10%","25%"].includes(rate)) return toast("الفئة غير صحيحة.");
-  if(els.fPrice.value && price === "") return toast("السعر لازم يكون رقم صحيح (مثال: 120).");
+  if (!name) return toast("اكتب اسم الصنف.");
+  if (!code) return toast("اكتب رقم البند.");
+  if (rate && !["5%", "10%", "25%"].includes(rate)) return toast("اختر فئة صحيحة.");
+  if (els.fPrice.value && price === "") return toast("السعر يجب أن يكون رقمًا صحيحًا.");
 
   const item = {
     id: editingId || crypto.randomUUID(),
-    name, code, rate: rate || "", price
+    name,
+    code,
+    rate: rate || "",
+    price
   };
 
   await putItem(item);
@@ -233,149 +251,175 @@ async function onSave(){
   await reload();
 }
 
+async function onDelete(id){
+  const it = allItems.find(x => x.id === id);
+  if (!it) return;
+  const ok = confirm(`حذف الصنف: ${it.name} ؟`);
+  if (!ok) return;
+  await deleteById(id);
+  await reload();
+}
+
+async function onDeleteFromModal(){
+  if (!editingId) return;
+  const ok = confirm("هل تريد حذف هذا الصنف؟");
+  if (!ok) return;
+  await deleteById(editingId);
+  showModal(false);
+  await reload();
+}
+
 async function reload(){
   allItems = await getAll();
-  // ترتيب: بالاسم ثم البند
   allItems.sort((a,b)=>{
-    const an = (a.name||"").localeCompare(b.name||"", "ar");
-    if(an !== 0) return an;
-    return (a.code||"").localeCompare(b.code||"");
+    const byName = (a.name || "").localeCompare((b.name || ""), "ar");
+    if (byName !== 0) return byName;
+    return (a.code || "").localeCompare((b.code || ""));
   });
   render();
 }
 
 function bestHeaderMatch(headers, wanted){
-  const h = headers.map(x=> norm(x).toLowerCase());
-  const w = wanted.map(x=> x.toLowerCase());
-  for(let i=0;i<h.length;i++){
-    for(const k of w){
-      if(h[i] === k) return i;
+  const h = headers.map(x => norm(x).toLowerCase());
+  const w = wanted.map(x => x.toLowerCase());
+
+  for (let i = 0; i < h.length; i++){
+    for (const k of w){
+      if (h[i] === k) return i;
     }
   }
-  // contains match
-  for(let i=0;i<h.length;i++){
-    for(const k of w){
-      if(h[i].includes(k)) return i;
+
+  for (let i = 0; i < h.length; i++){
+    for (const k of w){
+      if (h[i].includes(k)) return i;
     }
   }
   return -1;
 }
 
 async function importXLSX(file){
-  if(!file) return;
+  if (!file) return;
+
   const data = await file.arrayBuffer();
   const wb = XLSX.read(data, { type: "array" });
-  const sheetName = wb.SheetNames[0];
-  const ws = wb.Sheets[sheetName];
+  const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
 
-  if(!rows.length) return alert("الملف فارغ.");
+  if (!rows.length) return alert("الملف فارغ.");
+
   const headers = rows[0] || [];
   const idxName = bestHeaderMatch(headers, ["الصنف","اسم الصنف","name"]);
-  const idxCode = bestHeaderMatch(headers, ["البند","رقم البند","hs","code"]);
+  const idxCode = bestHeaderMatch(headers, ["البند","رقم البند","code","hs"]);
   const idxRate = bestHeaderMatch(headers, ["الفئة","rate"]);
   const idxPrice = bestHeaderMatch(headers, ["السعر (usd)","السعر","price","value"]);
 
-  if(idxName < 0 || idxCode < 0){
-    return alert("لم أجد أعمدة (الصنف) و(البند) في الصف الأول.");
+  if (idxName < 0 || idxCode < 0){
+    return alert("لم أجد عمودي الصنف والبند.");
   }
 
-  let added = 0;
-  for(let i=1;i<rows.length;i++){
+  let count = 0;
+
+  for (let i = 1; i < rows.length; i++){
     const row = rows[i];
     const name = norm(row[idxName]);
     const code = normCode(row[idxCode]);
-    if(!name || !code) continue;
+    if (!name || !code) continue;
 
     const rate = idxRate >= 0 ? norm(row[idxRate]) : "";
     const price = idxPrice >= 0 ? parsePrice(row[idxPrice]) : "";
 
-    const item = { id: crypto.randomUUID(), name, code, rate: ["5%","10%","25%"].includes(rate) ? rate : "", price };
-    await putItem(item);
-    added++;
+    await putItem({
+      id: crypto.randomUUID(),
+      name,
+      code,
+      rate: ["5%","10%","25%"].includes(rate) ? rate : "",
+      price
+    });
+
+    count++;
   }
-  alert(`تم الاستيراد: ${added} سطر`);
+
+  alert(`تم استيراد ${count} صنف`);
   await reload();
 }
 
-function download(filename, text, mime="application/json"){
+function download(filename, text, mime = "application/json"){
   const blob = new Blob([text], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
-  document.body.appendChild(a);
   a.click();
-  a.remove();
   URL.revokeObjectURL(url);
 }
 
 async function exportJSON(){
   const data = await getAll();
-  const payload = {
-    exportedAt: new Date().toISOString(),
-    items: data
-  };
-  download(`backup_items_${Date.now()}.json`, JSON.stringify(payload, null, 2), "application/json");
+  download(
+    `backup_items_${Date.now()}.json`,
+    JSON.stringify({ exportedAt: new Date().toISOString(), items: data }, null, 2)
+  );
 }
 
 async function importJSON(file){
-  if(!file) return;
+  if (!file) return;
   const text = await file.text();
+
   let payload;
   try{
     payload = JSON.parse(text);
   }catch{
     return alert("ملف JSON غير صالح.");
   }
-  const items = payload.items || payload;
-  if(!Array.isArray(items)) return alert("JSON لا يحتوي قائمة items.");
 
-  let added = 0;
-  for(const it of items){
+  const items = payload.items || payload;
+  if (!Array.isArray(items)) return alert("الملف لا يحتوي items.");
+
+  let count = 0;
+  for (const it of items){
     const name = norm(it.name || it["الصنف"]);
     const code = normCode(it.code || it["البند"]);
-    if(!name || !code) continue;
+    if (!name || !code) continue;
 
     const rate = norm(it.rate || it["الفئة"]);
     const price = parsePrice(it.price ?? it["السعر (USD)"] ?? it["السعر"] ?? "");
 
     await putItem({
       id: crypto.randomUUID(),
-      name, code,
+      name,
+      code,
       rate: ["5%","10%","25%"].includes(rate) ? rate : "",
       price
     });
-    added++;
+    count++;
   }
-  alert(`تم استيراد: ${added} صنف`);
+
+  alert(`تم استيراد ${count} صنف`);
   await reload();
 }
 
 async function onClearAll(){
-  const ok = confirm("متأكد تريد مسح كل البيانات من هذا الجهاز؟");
-  if(!ok) return;
-  await clearAll();
+  const ok = confirm("هل تريد مسح كل البيانات من هذا الجهاز؟");
+  if (!ok) return;
+  await clearAllStore();
   await reload();
 }
 
-// PWA install
-let deferredPrompt = null;
 window.addEventListener("beforeinstallprompt", (e)=>{
   e.preventDefault();
   deferredPrompt = e;
   els.installBtn.hidden = false;
 });
+
 els.installBtn.addEventListener("click", async ()=>{
-  if(!deferredPrompt) return;
+  if (!deferredPrompt) return;
   deferredPrompt.prompt();
   await deferredPrompt.userChoice;
   deferredPrompt = null;
   els.installBtn.hidden = true;
 });
 
-// Service worker
-if("serviceWorker" in navigator){
+if ("serviceWorker" in navigator){
   navigator.serviceWorker.register("./sw.js").catch(()=>{});
 }
 
@@ -385,7 +429,9 @@ async function init(){
 
   els.q.addEventListener("input", render);
   els.filterRate.addEventListener("change", render);
-  els.addNew.addEventListener("click", openAdd);
+
+  els.addNewTop.addEventListener("click", openAdd);
+  els.fabAdd.addEventListener("click", openAdd);
   els.closeModal.addEventListener("click", ()=> showModal(false));
   els.saveItem.addEventListener("click", onSave);
   els.deleteItem.addEventListener("click", onDeleteFromModal);
@@ -395,9 +441,8 @@ async function init(){
   els.exportJson.addEventListener("click", exportJSON);
   els.jsonFile.addEventListener("change", (e)=> importJSON(e.target.files[0]));
 
-  // close modal on background click
   els.modal.addEventListener("click", (e)=>{
-    if(e.target === els.modal) showModal(false);
+    if (e.target === els.modal) showModal(false);
   });
 }
 
